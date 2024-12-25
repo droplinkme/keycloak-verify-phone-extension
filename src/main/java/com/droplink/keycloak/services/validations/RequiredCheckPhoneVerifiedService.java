@@ -23,9 +23,6 @@ public class RequiredCheckPhoneVerifiedService {
       }
 
       context.getUser().addRequiredAction(VerifyPhoneRequiredActionFactory.ACTION_ID);
-      return;
     }
-    
-    System.out.println("Phone verification not enabled for realm: " + realm.getName());
   }
 }

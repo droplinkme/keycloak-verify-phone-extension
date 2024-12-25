@@ -5,63 +5,36 @@
  */
 package com.droplink.keycloak.services.actions;
 
+import java.util.HashMap;
+
 import org.keycloak.authentication.RequiredActionContext;
 
-import com.droplink.keycloak.constants.ExtensionConstants;
-import com.droplink.keycloak.constants.ExtensionMessages;
-import com.droplink.keycloak.contexts.RequiredPhoneContext;
+import com.droplink.keycloak.helpers.FormHelper;
+import com.droplink.keycloak.helpers.PageChallengeHelper;
+import com.droplink.keycloak.interfaces.IExecutable;
 import com.droplink.keycloak.providers.sms.interfaces.ISmsProvider;
+import com.droplink.keycloak.services.ReceiveOtpService;
+import com.droplink.keycloak.services.SendOtpService;
 
-public class RequiredActionChallengeService extends RequiredPhoneContext {
+public class RequiredActionChallengeService {
   
-  private final ISmsProvider smsProvider;
+  private final HashMap<String, Object> classes = new HashMap<>();
 
   public RequiredActionChallengeService(ISmsProvider smsProvider) {
-    this.smsProvider = smsProvider;
+    classes.put("sendOTP", new SendOtpService(smsProvider));
+    classes.put("recevieOTP", new ReceiveOtpService());
   }
   
   public void exec(RequiredActionContext context) {
-    if (!validatePhoneConfiguration(context)) {
-        return;
+    String origin = FormHelper.getValue(context, "origin").toLowerCase();
+    
+    Object obj = classes.get(origin);
+    
+    if (obj == null) {
+      PageChallengeHelper.createPageChallengeSendOTP(context, null);
     }
 
-    if (shouldSendOtp(context)) {
-      generateAndSendOtp(context);
-      createPageChallenge(context, true);
-      return;
-    }
-
-    createPageChallenge(context, false);
+    ((IExecutable) classes.get(origin)).exec(context);
   }
-  
 
-  private void generateAndSendOtp(RequiredActionContext context) {
-    String otp = generateAndStoreOtp(context);
-    String phoneNumber = getUserPhoneNumberValue(context);
-    String template = context.getConfig().getConfigValue(ExtensionConstants.CODE_TEMPLATE_SMS,
-        "Your verification code is: {code}");
-    boolean isSimulationMode = Boolean
-        .parseBoolean(context.getConfig().getConfigValue(ExtensionConstants.CODE_SIMULATION_MODE, "false"));
-    String message = template.replace("{code}", otp);
-    try {
-      smsProvider.sendOtp(message, phoneNumber, isSimulationMode);
-    } catch (Exception e) {
-      context.getEvent().error("sms_send_failure");
-      createPageChallengeFailure(context, ExtensionMessages.SMS_SEND_FAILED);
-    }
-  }
-  
-  private boolean shouldSendOtp(RequiredActionContext context) {
-      long ttl = Long.parseLong(context.getConfig().getConfigValue(ExtensionConstants.CODE_TTL, "3600"));
-      String existingOtp = getSessionAuthNoteValue(context, ExtensionConstants.OTP_SESSION_AUTH_NOTE_ATTRIBUTE);
-      String isResendOtp = getFormValue(context, ExtensionConstants.OTP_RESEND_FORM_ATTRIBUTE);
-      String isSendOtp = getFormValue(context, ExtensionConstants.OTP_SEND_FORM_ATTRIBUTE);
-      boolean otpExpired = isOtpSessionExpired(context, ttl);
-
-      if("true".equals(isSendOtp)) {
-        return true;
-      }
-
-      return "true".equals(isSendOtp) && (existingOtp == null || otpExpired || "true".equals(isResendOtp));
-  }
 }
